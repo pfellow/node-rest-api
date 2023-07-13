@@ -3,6 +3,7 @@ const path = require('path');
 
 const { validationResult } = require('express-validator');
 
+const socket = require('../socket');
 const Post = require('../models/post');
 const User = require('../models/user');
 
@@ -12,11 +13,20 @@ exports.getPosts = async (req, res, next) => {
   try {
     const totalItems = await Post.find().countDocuments();
     const posts = await Post.find()
+      .populate('creator')
+      .sort({ createdAt: -1 })
       .skip((currentPage - 1) * perPage)
       .limit(perPage);
-    res
-      .status(200)
-      .json({ message: 'Fetched posts successfully', posts, totalItems });
+    res.status(200).json({
+      message: 'Fetched posts successfully',
+      posts: posts.map((post) => {
+        return {
+          ...post._doc,
+          creator: { _id: post.creator._id, name: post.creator.name }
+        };
+      }),
+      totalItems
+    });
   } catch (err) {
     if (!err.statusCode) {
       err.statusCode = 500;
@@ -58,6 +68,10 @@ exports.createPost = (req, res, next) => {
       return user.save();
     })
     .then((result) => {
+      socket.getIO().emit('posts', {
+        action: 'create',
+        post: { ...post._doc, creator: { _id: req.userId, name: creator.name } }
+      });
       console.log(result);
       res.status(201).json({
         message: 'Post created successfully!',
@@ -118,7 +132,7 @@ exports.putPost = (req, res, next) => {
         error.statusCode = 404;
         throw error;
       }
-      if (post.creator.toString() !== req.userId) {
+      if (post.creator._id.toString() !== req.userId) {
         const error = new Error('Not authorized');
         error.statusCode = 403;
         throw error;
@@ -129,6 +143,7 @@ exports.putPost = (req, res, next) => {
       return post.save();
     })
     .then((result) => {
+      socket.getIO().emit('posts', { action: 'update', post: result });
       return res.status(200).json({ message: 'Post updated', post: result });
     })
     .catch((err) => {
@@ -164,6 +179,7 @@ exports.deletePost = (req, res, next) => {
       return user.save();
     })
     .then((result) => {
+      socket.getIO().emit('posts', { action: 'delete', post: postId });
       console.log(result);
       res.status(200).json({ message: 'Post deleted' });
     })

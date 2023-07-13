@@ -45,11 +45,8 @@ app.use(cors({ origin: true }));
 
 // app.use((req, res, next) => {
 //   res.setHeader('Access-Control-Allow-Origin', '*');
-//   res.setHeader(
-//     'Access-Control-Allow-Methods',
-//     'GET, POST, PUT, PATCH, DELETE, OPTIONS'
-//   );
-//   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+//   res.setHeader('Access-Control-Allow-Methods', '*');
+//   res.setHeader('Access-Control-Allow-Headers', '*');
 //   next();
 // });
 
@@ -66,5 +63,11 @@ app.use((error, req, res, next) => {
 
 mongoose
   .connect(MONGODB_URI)
-  .then(() => app.listen(8080))
+  .then(() => {
+    const server = app.listen(8080);
+    const io = require('./socket').init(server);
+    io.on('connection', (socket) => {
+      console.log('Client connected');
+    });
+  })
   .catch((err) => console.log(err));
