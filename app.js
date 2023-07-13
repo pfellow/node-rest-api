@@ -5,9 +5,12 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const multer = require('multer');
 const cors = require('cors');
+const { ApolloServer } = require('@apollo/server');
+const { expressMiddleware } = require('@apollo/server/express4');
 
-const feedRoutes = require('./routes/feed');
-const authRoutes = require('./routes/auth');
+const typeDefs = require('./graphql/schema');
+const resolvers = require('./graphql/resolvers');
+const auth = require('./middleware/auth');
 
 dotenv.config();
 
@@ -42,6 +45,7 @@ app.use(multer({ storage: fileStorage, fileFilter }).single('image'));
 app.use('/images', express.static(path.join(__dirname, 'images')));
 
 app.use(cors({ origin: true }));
+app.use(auth);
 
 // app.use((req, res, next) => {
 //   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -50,8 +54,15 @@ app.use(cors({ origin: true }));
 //   next();
 // });
 
-app.use('/feed', feedRoutes);
-app.use('/auth', authRoutes);
+const apolloServer = new ApolloServer({
+  typeDefs,
+  resolvers,
+  graphiql: true
+});
+
+apolloServer.start().then(() => {
+  app.use('/graphql', expressMiddleware(apolloServer));
+});
 
 app.use((error, req, res, next) => {
   console.log(error);
@@ -64,10 +75,6 @@ app.use((error, req, res, next) => {
 mongoose
   .connect(MONGODB_URI)
   .then(() => {
-    const server = app.listen(8080);
-    const io = require('./socket').init(server);
-    io.on('connection', (socket) => {
-      console.log('Client connected');
-    });
+    app.listen(8080);
   })
   .catch((err) => console.log(err));
