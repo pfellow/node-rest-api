@@ -42,7 +42,13 @@ const resolvers = {
       return { ...createdUser._doc, _id: createdUser._id.toString() };
     },
     createPost: async (parent, { postInput }, contextValue) => {
-      console.log(contextValue);
+      if (!contextValue.isAuth) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 401
+          }
+        });
+      }
       const errors = [];
       if (
         validator.isEmpty(postInput.title) ||
@@ -64,17 +70,30 @@ const resolvers = {
           }
         });
       }
+      const user = await User.findById(contextValue.userId);
+      if (!user) {
+        throw new GraphQLError('Invalid user', {
+          extensions: {
+            data: errors,
+            code: 401
+          }
+        });
+      }
       const post = new Post({
         title: postInput.title,
         content: postInput.content,
-        imageUrl: postInput.imageUrl
+        imageUrl: postInput.imageUrl,
+        creator: user
       });
       const createdPost = await post.save();
+      user.posts.push(createdPost);
+      await user.save();
+      console.log(createdPost);
       return {
         ...createdPost._doc,
         _id: createdPost._id.toString(),
         createdAt: createdPost.createdAt.toISOString(),
-        updatedAt: createdPost.updateddAt.toISOString()
+        updatedAt: createdPost.updatedAt.toISOString()
       };
     }
   },
@@ -105,6 +124,30 @@ const resolvers = {
         { expiresIn: '1h' }
       );
       return { token, userId: user._id.toString() };
+    },
+    posts: async (_, __, contextValue) => {
+      if (!contextValue.isAuth) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 401
+          }
+        });
+      }
+      const totalPosts = await Post.find().countDocuments();
+      const posts = await Post.find()
+        .populate('creator')
+        .sort({ createdAt: -1 });
+      return {
+        posts: posts.map((p) => {
+          return {
+            ...p._doc,
+            _id: p._id.toString(),
+            createdAt: p.createdAt.toISOString(),
+            updatedAt: p.updatedAt.toISOString()
+          };
+        }),
+        totalPosts
+      };
     }
   }
 };

@@ -7,6 +7,7 @@ const multer = require('multer');
 const cors = require('cors');
 const { ApolloServer } = require('@apollo/server');
 const { expressMiddleware } = require('@apollo/server/express4');
+const { startStandaloneServer } = require('@apollo/server/standalone');
 
 const typeDefs = require('./graphql/schema');
 const resolvers = require('./graphql/resolvers');
@@ -61,7 +62,12 @@ const apolloServer = new ApolloServer({
 });
 
 apolloServer.start().then(() => {
-  app.use('/graphql', expressMiddleware(apolloServer));
+  app.use(
+    '/graphql',
+    expressMiddleware(apolloServer, {
+      context: async ({ req }) => req
+    })
+  );
 });
 
 app.use((error, req, res, next) => {

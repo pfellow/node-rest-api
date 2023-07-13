@@ -20,6 +20,10 @@ const typeDefs = `
         token: String!
         userId: String!
     }
+    type PostData {
+        posts: [Post!]
+        totalPosts: Int!
+    }
     input UserInputData {
         email: String!
         name: String!
@@ -36,6 +40,7 @@ const typeDefs = `
     }
     type Query {
         login(email: String!, password: String!): AuthData!
+        posts: PostData!
     }
     schema {
         query: Query
