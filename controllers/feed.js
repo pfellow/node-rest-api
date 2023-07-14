@@ -72,7 +72,6 @@ exports.createPost = (req, res, next) => {
         action: 'create',
         post: { ...post._doc, creator: { _id: req.userId, name: creator.name } }
       });
-      console.log(result);
       res.status(201).json({
         message: 'Post created successfully!',
         post,
@@ -180,7 +179,6 @@ exports.deletePost = (req, res, next) => {
     })
     .then((result) => {
       socket.getIO().emit('posts', { action: 'delete', post: postId });
-      console.log(result);
       res.status(200).json({ message: 'Post deleted' });
     })
     .catch((err) => {

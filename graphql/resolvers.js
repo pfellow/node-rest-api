@@ -1,3 +1,6 @@
+const path = require('path');
+const fs = require('fs');
+
 const bcrypt = require('bcrypt');
 const validator = require('validator');
 const jwt = require('jsonwebtoken');
@@ -88,13 +91,120 @@ const resolvers = {
       const createdPost = await post.save();
       user.posts.push(createdPost);
       await user.save();
-      console.log(createdPost);
       return {
         ...createdPost._doc,
         _id: createdPost._id.toString(),
         createdAt: createdPost.createdAt.toISOString(),
         updatedAt: createdPost.updatedAt.toISOString()
       };
+    },
+    updatePost: async (parent, { postId, postInput }, contextValue) => {
+      if (!contextValue.isAuth) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 401
+          }
+        });
+      }
+      const post = await Post.findById(postId).populate('creator');
+      if (!post) {
+        throw new GraphQLError('Post not found!', {
+          extensions: {
+            code: 404
+          }
+        });
+      }
+      if (post.creator._id.toString() !== contextValue.userId.toString()) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 403
+          }
+        });
+      }
+      const errors = [];
+      if (
+        validator.isEmpty(postInput.title) ||
+        !validator.isLength(postInput.title, { min: 5 })
+      ) {
+        errors.push({ message: 'Title is invalid!' });
+      }
+      if (
+        validator.isEmpty(postInput.content) ||
+        !validator.isLength(postInput.content, { min: 5 })
+      ) {
+        errors.push({ message: 'Content is invalid!' });
+      }
+      if (errors.length > 0) {
+        throw new GraphQLError('Incorrect input!', {
+          extensions: {
+            data: errors,
+            code: 422
+          }
+        });
+      }
+      post.title = postInput.title;
+      post.content = postInput.content;
+      if (postInput.imageUrl !== 'undefined') {
+        post.imageUrl = postInput.imageUrl;
+      }
+      const updatedPost = await post.save();
+      return {
+        ...updatedPost._doc,
+        _id: updatedPost._id.toString(),
+        createdAt: updatedPost.createdAt.toISOString(),
+        updatedAt: updatedPost.updatedAt.toISOString()
+      };
+    },
+    deletePost: async (parent, { postId }, contextValue) => {
+      if (!contextValue.isAuth) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 401
+          }
+        });
+      }
+      const post = await Post.findById(postId);
+      if (!post) {
+        throw new GraphQLError('Post not found!', {
+          extensions: {
+            code: 404
+          }
+        });
+      }
+      if (post.creator._id.toString() !== contextValue.userId.toString()) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 403
+          }
+        });
+      }
+
+      await Post.findByIdAndRemove(postId);
+      clearImage(post.imageUrl);
+      const user = await User.findById(contextValue.userId);
+      user.posts.pull(postId);
+      await user.save();
+      return true;
+    },
+    updateStatus: async (parent, { status }, contextValue) => {
+      if (!contextValue.isAuth) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 401
+          }
+        });
+      }
+      const user = await User.findById(contextValue.userId);
+      if (!user) {
+        throw new GraphQLError('User not found!', {
+          extensions: {
+            code: 404
+          }
+        });
+      }
+      user.status = status;
+      await user.save();
+      return { ...user._doc, _id: user._id.toString() };
     }
   },
   Query: {
@@ -125,7 +235,7 @@ const resolvers = {
       );
       return { token, userId: user._id.toString() };
     },
-    posts: async (_, __, contextValue) => {
+    posts: async (_, { page }, contextValue) => {
       if (!contextValue.isAuth) {
         throw new GraphQLError('Not Authenticated', {
           extensions: {
@@ -133,9 +243,15 @@ const resolvers = {
           }
         });
       }
+      if (!page) {
+        page = 1;
+      }
+      const perPage = 2;
       const totalPosts = await Post.find().countDocuments();
       const posts = await Post.find()
         .populate('creator')
+        .skip((page - 1) * perPage)
+        .limit(perPage)
         .sort({ createdAt: -1 });
       return {
         posts: posts.map((p) => {
@@ -148,8 +264,58 @@ const resolvers = {
         }),
         totalPosts
       };
+    },
+    post: async (parent, { postId }, contextValue) => {
+      if (!contextValue.isAuth) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 401
+          }
+        });
+      }
+      const post = await Post.findById(postId).populate('creator');
+      if (!post) {
+        throw new GraphQLError('Post not found!', {
+          extensions: {
+            code: 404
+          }
+        });
+      }
+      return {
+        ...post._doc,
+        _id: post._id.toString(),
+        createdAt: post.createdAt.toISOString(),
+        updatedAt: post.updatedAt.toISOString()
+      };
+    },
+    user: async (parent, _, contextValue) => {
+      if (!contextValue.isAuth) {
+        throw new GraphQLError('Not Authenticated', {
+          extensions: {
+            code: 401
+          }
+        });
+      }
+      const user = await User.findById(contextValue.userId);
+      if (!user) {
+        throw new GraphQLError('User not found!', {
+          extensions: {
+            code: 404
+          }
+        });
+      }
+      return { ...user._doc, _id: user._id.toString() };
     }
   }
+};
+
+const clearImage = (imageUrl) => {
+  const filePath = path.join(__dirname, '..', imageUrl);
+  fs.unlink(filePath, (err) => {
+    if (err) {
+      console.log(err);
+    }
+  });
 };
 
 module.exports = resolvers;

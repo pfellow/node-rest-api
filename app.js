@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 
 const express = require('express');
 const mongoose = require('mongoose');
@@ -7,7 +8,6 @@ const multer = require('multer');
 const cors = require('cors');
 const { ApolloServer } = require('@apollo/server');
 const { expressMiddleware } = require('@apollo/server/express4');
-const { startStandaloneServer } = require('@apollo/server/standalone');
 
 const typeDefs = require('./graphql/schema');
 const resolvers = require('./graphql/resolvers');
@@ -21,7 +21,6 @@ const app = express();
 
 const fileStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    console.log(file);
     cb(null, 'images');
   },
   filename: (req, file, cb) => {
@@ -44,9 +43,24 @@ const fileFilter = (req, file, cb) => {
 app.use(express.json());
 app.use(multer({ storage: fileStorage, fileFilter }).single('image'));
 app.use('/images', express.static(path.join(__dirname, 'images')));
-
 app.use(cors({ origin: true }));
 app.use(auth);
+
+app.put('/post-image', (req, res, next) => {
+  if (!req.isAuth) {
+    throw new Error('Not authenticated!');
+  }
+  if (!req.file) {
+    return res.status(200).json({ message: 'No file provided!' });
+  }
+  if (req.body.oldPath) {
+    clearImage(req.body.oldPath);
+  }
+  return res.status(201).json({
+    message: 'File stored',
+    filePath: req.file.path.replace('\\', '/')
+  });
+});
 
 // app.use((req, res, next) => {
 //   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -84,3 +98,12 @@ mongoose
     app.listen(8080);
   })
   .catch((err) => console.log(err));
+
+const clearImage = (imageUrl) => {
+  const filePath = path.join(__dirname, imageUrl);
+  fs.unlink(filePath, (err) => {
+    if (err) {
+      console.log(err);
+    }
+  });
+};

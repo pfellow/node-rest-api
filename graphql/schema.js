@@ -37,10 +37,15 @@ const typeDefs = `
     type Mutation {
         createUser(userInput: UserInputData): User!
         createPost(postInput: PostInputData): Post!
+        updatePost(postId: ID!, postInput: PostInputData): Post!
+        deletePost(postId: ID!): Boolean
+        updateStatus(status: String!): User!
     }
     type Query {
         login(email: String!, password: String!): AuthData!
-        posts: PostData!
+        posts(page: Int): PostData!
+        post(postId: ID!): Post!
+        user: User!
     }
     schema {
         query: Query
